@@ -84,4 +84,12 @@ $env:NEXT_PUBLIC_BASE_PATH = '/countdown-vault'
 npm run build
 ```
 
-Para un dominio propio o un sitio en la raíz, omite esa variable. La publicación y el workflow de GitHub Pages quedan pendientes.
+Para un dominio propio o un sitio en la raíz, omite esa variable.
+
+## GitHub Pages
+
+`.github/workflows/deploy-pages.yml` publica automáticamente cada push a `main` y permite ejecución manual desde Actions. Usa Node.js 24, `npm ci`, lint, build estático, pruebas y las acciones oficiales de GitHub Pages para subir `out/` y desplegar en el environment `github-pages`.
+
+GitHub Pages debe tener GitHub Actions como fuente. En Settings → Secrets and variables → Actions → Variables, configura `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. El workflow lee exclusivamente estas Repository Variables y establece `NEXT_PUBLIC_BASE_PATH=/countdown-vault` durante el build, reutilizando la configuración existente de Next.js.
+
+La URL del sitio es `https://badbryan01.github.io/countdown-vault/`. Revisa en Actions que los jobs `build` y `deploy` terminen correctamente. `.env.local` permanece ignorado y no se usa en el runner.
