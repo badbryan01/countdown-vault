@@ -15,7 +15,7 @@ button, a, input { -webkit-tap-highlight-color: transparent; }
 .app-shell { min-height: 100svh; display: flex; flex-direction: column; max-width: 1440px; margin: auto; padding: 0 20px; }
 .app-header { min-height: 92px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .brand { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; letter-spacing: -0.3px; }
-.brand-mark { color: #bfd3a7; font-size: 25px; font-weight: 400; }
+.brand-mark { display: block; width: 26px; height: 26px; flex-shrink: 0; object-fit: contain; }
 .text-link { color: var(--muted); font-size: 13px; transition: color 180ms; display: inline-flex; align-items: center; min-height: 44px; }
 .text-link:hover { color: var(--foreground); }
 .main-content { flex: 1; display: flex; align-items: center; justify-content: center; padding: 32px 0 56px; }
@@ -80,6 +80,7 @@ button:disabled { opacity: 0.6; cursor: wait; }
   .app-shell { padding: 0 48px; }
   .app-header { min-height: 112px; }
   .brand { font-size: 16px; }
+  .brand-mark { width: 30px; height: 30px; }
   .form-panel { padding: 42px 36px; }
   .settings-date-grid, .settings-text-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .settings-text-grid .full-width { grid-column: 1 / -1; }
