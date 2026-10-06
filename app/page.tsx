@@ -1,69 +1,73 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useRouter } from "next/navigation";
+import { useState, useTransition, type FormEvent } from "react";
+import { AppShell } from "./components/app-shell";
+import { SessionGate } from "./components/session-gate";
+import { getSupabaseClient } from "./lib/supabase";
+import { LoadingLogo } from "./components/loading-logo";
+
+export default function LoginPage() {
+  return <SessionGate requireSession={false}><LoginForm /></SessionGate>;
+}
+
+function LoginForm() {
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+  const [navigating, startTransition] = useTransition();
+  const processing = pending || navigating;
+  const [error, setError] = useState<string | null>(null);
+
+  async function login(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (pending) return;
+    const formData = new FormData(event.currentTarget);
+    setPending(true);
+    setError(null);
+    try {
+      const { data, error } = await getSupabaseClient().auth.signInWithPassword({
+        email: String(formData.get("email") ?? "").trim(),
+        password: String(formData.get("password") ?? ""),
+      });
+      if (error) {
+        setError(error.code === "invalid_credentials"
+          ? "Correo o contraseña incorrectos."
+          : error.code === "email_not_confirmed"
+            ? "Debes confirmar tu correo antes de iniciar sesión."
+            : "No se pudo iniciar sesión. Inténtalo nuevamente.");
+        return;
+      }
+      if (!data.session) {
+        setError("No se pudo iniciar sesión. Inténtalo nuevamente.");
+        return;
+      }
+      startTransition(() => router.replace("/countdown"));
+    } catch {
+      setError("No se pudo iniciar sesión. Revisa tu conexión e inténtalo nuevamente.");
+    } finally {
+      setPending(false);
+    }
+  }
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+    <AppShell>
+      {processing && <LoadingLogo variant="overlay" label="Iniciando sesión" />}
+      <section className="panel form-panel" aria-labelledby="login-title" inert={processing}>
+        <p className="eyebrow">TU ESPACIO PERSONAL</p>
+        <h1 id="login-title">Cada segundo cuenta.</h1>
+        <p className="description">Un lugar para esperar lo que importa.</p>
+        <form className="form" onSubmit={login} aria-busy={processing}>
+          <div className="field">
+            <label htmlFor="email">Correo electrónico</label>
+            <input id="email" name="email" type="email" autoComplete="username" placeholder="tu@correo.com" disabled={pending} required />
+          </div>
+          <div className="field">
+            <label htmlFor="password">Contraseña</label>
+            <input id="password" name="password" type="password" autoComplete="current-password" placeholder="Tu contraseña" disabled={pending} required />
+          </div>
+          {error && <p className="auth-error" role="alert">{error}</p>}
+          <button className="button button-primary" type="submit" disabled={processing}>Iniciar sesión <span aria-hidden="true">→</span></button>
+        </form>
+      </section>
+    </AppShell>
   );
 }
