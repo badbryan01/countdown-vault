@@ -1,6 +1,10 @@
 @import "tailwindcss";
 
-:root { color-scheme: dark; --background: #0c0e11; --foreground: #f1f2f4; --muted: #959ca8; }
+:root { color-scheme: dark; --background: #0c0e11; --foreground: #f1f2f4; --muted: #959ca8; --accent: #c1d4ac; --accent-hover: #d3e2c3; }
+[data-accent="green"] { --accent: #c1d4ac; --accent-hover: #d3e2c3; }
+[data-accent="blue"] { --accent: #a8c9f3; --accent-hover: #c5dcf9; }
+[data-accent="violet"] { --accent: #c9b5ef; --accent-hover: #ddcef7; }
+[data-accent="amber"] { --accent: #e9c58b; --accent-hover: #f3d9af; }
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -11,7 +15,7 @@ body { margin: 0; background: var(--background); color: var(--foreground); font-
 button, input { font: inherit; }
 a { text-decoration: none; }
 button, a, input { -webkit-tap-highlight-color: transparent; }
-:focus-visible { outline: 2px solid #b6c8a1; outline-offset: 5px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 5px; }
 .app-shell { min-height: 100svh; display: flex; flex-direction: column; max-width: 1440px; margin: auto; padding: 0 20px; }
 .app-header { min-height: 92px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .brand { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; letter-spacing: -0.3px; }
@@ -27,7 +31,8 @@ button, a, input { -webkit-tap-highlight-color: transparent; }
 .personalization legend { padding: 0 12px 0 0; color: #cdd1d9; font-size: 14px; font-weight: 600; }
 .field-hint { color: var(--muted); font-size: 11px; }
 .countdown-panel .eyebrow, .countdown-status { overflow-wrap: anywhere; }
-.eyebrow { margin: 0 0 20px; color: #b6c8a1; font-size: 10px; font-weight: 600; letter-spacing: 2.2px; }
+.eyebrow { margin: 0 0 20px; color: var(--accent); font-size: 10px; font-weight: 600; letter-spacing: 2.2px; }
+.objective-name { margin: 0 0 14px; font-size: clamp(16px, 3vw, 22px); font-weight: 600; text-transform: uppercase; letter-spacing: 1.4px; overflow-wrap: anywhere; }
 h1 { margin: 0; font-size: clamp(26px, 5vw, 32px); font-weight: 500; line-height: 1.25; letter-spacing: -1px; }
 .description { color: var(--muted); font-size: 14px; line-height: 1.7; margin: 12px 0 0; }
 .form { display: flex; flex-direction: column; gap: 22px; margin-top: 32px; }
@@ -37,8 +42,25 @@ h1 { margin: 0; font-size: clamp(26px, 5vw, 32px); font-weight: 500; line-height
 .field input:hover { border-color: #505965; }
 .field input::placeholder { color: #6f7785; }
 .button { display: inline-flex; align-items: center; justify-content: center; gap: 22px; min-height: 50px; padding: 12px 22px; border-radius: 10px; border: 1px solid transparent; font-size: 14px; font-weight: 600; cursor: pointer; transition: background-color 180ms, border-color 180ms; }
-.button-primary { background: #c1d4ac; color: #172012; }
-.button-primary:hover { background: #d3e2c3; }
+.button-primary { background: var(--accent); color: #172012; }
+.button-primary:hover { background: var(--accent-hover); }
+.accent-picker { border: 0; padding: 0; margin: 0; min-width: 0; }
+.accent-picker legend { font-size: 13px; color: #cdd1d9; margin-bottom: 14px; }
+.accent-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.accent-option { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 10px; border: 1px solid #30353e; border-radius: 10px; cursor: pointer; font-size: 12px; }
+.accent-option:has(input:checked) { border-color: var(--accent); background: #ffffff08; }
+.accent-option input, .percentage-toggle input { accent-color: var(--accent); width: 16px; height: 16px; flex-shrink: 0; }
+.accent-swatch { width: 13px; height: 13px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+.percentage-toggle { display: flex; align-items: center; gap: 12px; min-height: 44px; font-size: 13px; cursor: pointer; color: #cdd1d9; }
+.progress-milestones { position: relative; height: 28px; }
+.progress-milestone { position: absolute; transform: translateX(-50%); font-size: 9px; color: #737d8b; white-space: nowrap; }
+.progress-milestone::after { content: ""; position: absolute; top: 18px; left: 50%; height: 7px; width: 1px; background: #454d59; }
+.progress-milestone.is-reached { color: var(--accent); }
+.progress-milestone.is-reached::after { background: var(--accent); }
+.progress-percentages { display: flex; justify-content: space-between; gap: 16px; margin-top: 18px; font-size: 11px; color: #cdd1d9; font-variant-numeric: tabular-nums; }
+.progress-percentages span:last-child { text-align: right; }
+.time-summary { margin-top: 18px; font-size: 11px; line-height: 1.8; color: var(--muted); }
+.time-summary p { margin: 0; }
 button:disabled { opacity: 0.6; cursor: wait; }
 .field input:disabled { opacity: 0.6; }
 .auth-error { margin: 0; color: #f3a6a6; font-size: 12px; line-height: 1.7; }
@@ -84,6 +106,7 @@ button:disabled { opacity: 0.6; cursor: wait; }
   .form-panel { padding: 42px 36px; }
   .settings-date-grid, .settings-text-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .settings-text-grid .full-width { grid-column: 1 / -1; }
+  .accent-options { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .countdown-panel { padding: 52px 48px; }
   .countdown-grid { margin-top: 52px; margin-bottom: 36px; }
   .countdown-label { font-size: 12px; }

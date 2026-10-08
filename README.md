@@ -15,9 +15,13 @@ npm run dev
 
 La única fuente de fechas es `public.countdowns`. Cada usuario tiene una fila identificada por `user_id`, con `started_at`, `target_at` y `updated_at` como `timestamptz`. Las políticas RLS existentes deben permitir al usuario leer, insertar y actualizar su propia fila.
 
-Cada guardado verifica el usuario con `auth.getUser()` y hace un upsert con `onConflict: 'user_id'`. `started_at` y `updated_at` se reinician al instante en que se pulsa Guardar; `target_at` recibe la fecha seleccionada como ISO con zona horaria. No se persisten fechas en el navegador.
+Cada guardado verifica el usuario con `auth.getUser()` y hace un upsert con `onConflict: 'user_id'`. Antes de escribir, consulta la fila actual y compara los timestamps de `target_at`: `started_at` se reinicia al instante de Guardar únicamente si cambia la fecha objetivo (o no existe fila). Si solo cambia la personalización, mantiene el inicio existente; `updated_at` siempre se actualiza. Los segundos y milisegundos del objetivo se conservan si los campos de fecha/hora no cambian. No se persisten fechas en el navegador.
 
 El mismo formulario carga y guarda `title_text`, `start_label`, `end_label` y `message_text` junto con la fecha. Los textos son obligatorios, se recortan los espacios iniciales/finales y se admiten hasta 60, 40, 40 y 160 caracteres, respectivamente. Los usuarios sin registro comienzan con los valores predeterminados de la tabla como propuesta del formulario. El contador muestra los textos recuperados de Supabase; al llegar al objetivo mantiene «Llegó el momento.».
+
+La versión 1.1 guarda además `objective_name` (obligatorio, trim, máximo 60 caracteres), `show_progress_percentage` y `accent_theme` (`green`, `blue`, `violet`, `amber`). El nombre aparece antes de la fecha; el control de porcentaje permite mostrar u ocultar los valores transcurrido/restante con un decimal. Los temas aplican variables CSS a botones, etiquetas, foco y hitos, con previsualización inmediata en Settings y persistencia al guardar. La barra mantiene su color temporal verde → amarillo → naranjo → rojo.
+
+Los hitos 25/50/75/90% y el resumen de tiempo transcurrido/restante se calculan en el navegador a partir del mismo timer del countdown; no requieren columnas adicionales. Los porcentajes visibles suman 100,0% después del redondeo. Una fecha nueva debe ser futura; una fecha ya cumplida puede conservarse al editar solo personalización.
 
 El progreso se calcula cada segundo como `(ahora - started_at) / (target_at - started_at)`, limitado a 0–100%. Al llegar al objetivo, el contador queda en cero y la barra roja y completa. Si no existe una fila, se ofrece Definir fecha; los errores de lectura permiten reintentar.
 
@@ -57,10 +61,11 @@ Utiliza un usuario existente en Supabase Auth; esta app no crea usuarios.
 1. Con un usuario sin fila, verifica el estado vacío y el botón Definir fecha.
 2. Prueba campos vacíos, una fecha pasada y una hora igual al momento actual: no deben guardarse.
 3. Guarda una fecha futura y comprueba en Supabase la fila y los timestamps ISO. Recarga el contador y abre Configurar fecha: los valores deben recuperarse en horario de Santiago.
-4. Cambia el objetivo: debe mantenerse una sola fila para el usuario y reiniciarse `started_at`, `updated_at` y la barra.
+4. Cambia la fecha objetivo: debe mantenerse una sola fila para el usuario y reiniciarse `started_at` y la barra. Si solo cambias nombre, textos, tema o porcentaje, `started_at` debe mantenerse; `updated_at` debe actualizarse en ambos casos.
 5. Elige el próximo minuto y espera hasta el objetivo: contador cero, barra roja al 100% y Llegó el momento.
 6. Corta la conexión y comprueba los errores y Reintentar. Prueba otro usuario para verificar el aislamiento de las filas mediante RLS.
 7. Personaliza los cuatro textos, guarda y recarga ambas pantallas: deben conservarse. Prueba textos vacíos o con solo espacios, espacios en los extremos y valores cerca del máximo en móvil y escritorio.
+8. Guarda un nombre, alterna el porcentaje y prueba los cuatro temas. Verifica su persistencia, los hitos alcanzados y que el acento no cambie el color temporal de la barra. Comprueba la disposición en móvil y escritorio.
 
 Las pruebas automatizadas usan respuestas de Auth y de la tabla simuladas, sin contactar Supabase ni utilizar credenciales reales. Incluyen persistencia, upsert, errores, validación de fechas, cambios de horario de Santiago, límites del progreso y HTML inicial sin contenido protegido:
 
