@@ -1,11 +1,13 @@
 import type { ReactNode } from "react";
 import Image from "next/image";
-import type { AccentTheme } from "../lib/countdowns";
+import type { AccentTheme } from "../lib/objectives";
+import { LoadingLink } from "./loading-link";
+import { LogoutButton } from "./logout-button";
 import { Space_Grotesk } from "next/font/google";
 
 const brandFont = Space_Grotesk({ subsets: ["latin"], weight: "600", display: "swap" });
 
-export function AppShell({ children, action, accentTheme = "green" }: { children: ReactNode; action?: ReactNode; accentTheme?: AccentTheme }) {
+export function AppShell({ children, action, internal = false, accentTheme = "green" }: { children: ReactNode; action?: ReactNode; internal?: boolean; accentTheme?: AccentTheme }) {
   return (
     <div className="app-shell" data-accent={accentTheme}>
       <header className="app-header">
@@ -13,7 +15,7 @@ export function AppShell({ children, action, accentTheme = "green" }: { children
           <Image className="brand-mark" src={`${process.env.NEXT_PUBLIC_BASE_PATH || ""}/cv-logo.png`} alt="" aria-hidden="true" width={30} height={30} unoptimized />
           <span className={brandFont.className}>Countdown Vault</span>
         </span>
-        {action}
+        {internal ? <nav className="header-actions" aria-label="Navegación principal"><LoadingLink className="text-link" href="/dashboard">Dashboard</LoadingLink><LogoutButton /></nav> : action}
       </header>
       <main className="main-content">{children}</main>
       <footer className="app-footer">Un momento en el futuro. Un segundo a la vez.</footer>

@@ -98,7 +98,7 @@ test("login, persistent recovery, refresh and logout through the application cli
 });
 
 test("exported pages initially show session checking without flashing their content", async () => {
-  for (const path of ["index.html", "countdown/index.html", "settings/index.html"]) {
+  for (const path of ["index.html", "dashboard/index.html", "countdown/index.html", "settings/index.html"]) {
     const html = await readFile(new URL(`../out/${path}`, import.meta.url), "utf8");
     assert.ok(html.includes('aria-label="Comprobando sesión"'), path);
     assert.ok(html.includes("loading-logo-screen"), path);

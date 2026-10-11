@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createClient } from "@supabase/supabase-js";
-import { loadCountdown, saveCountdown, validateCountdownTexts, validateCountdownSettings, defaultTexts, textFields, accentThemes } from "../app/lib/countdowns.ts";
+import { loadObjective, loadObjectives, saveObjective, changeObjectiveStatus, deleteObjective, getDashboardObjectives, validateObjectiveTexts, validateObjectiveSettings, defaultTexts, textFields, accentThemes } from "../app/lib/objectives.ts";
 import { getCountdown, getProgressColor, getProgressPercentages, getTimeSummary, progressMilestones } from "../app/lib/countdown.ts";
 import { santiagoToIso, getSantiagoFields, formatCurrentDateTime } from "../app/lib/santiago-time.ts";
 
@@ -51,29 +51,29 @@ test("current clock shows Santiago seconds, 24-hour midnight rollover and season
 
 test("personalized texts trim spaces and reject empty or oversized fields", () => {
   const padded = Object.fromEntries(Object.entries(defaultTexts).map(([key, value]) => [key, `  ${value}  `]));
-  assert.deepEqual(validateCountdownTexts(padded), defaultTexts);
+  assert.deepEqual(validateObjectiveTexts(padded), defaultTexts);
   for (const field of textFields) {
     for (const value of ["", "   ", "x".repeat(field.maxLength + 1)]) {
-      assert.throws(() => validateCountdownTexts({ ...defaultTexts, [field.key]: value }), new RegExp(field.label));
+      assert.throws(() => validateObjectiveTexts({ ...defaultTexts, [field.key]: value }), new RegExp(field.label));
     }
     const maxValue = "x".repeat(field.maxLength);
-    assert.equal(validateCountdownTexts({ ...defaultTexts, [field.key]: maxValue })[field.key], maxValue);
+    assert.equal(validateObjectiveTexts({ ...defaultTexts, [field.key]: maxValue })[field.key], maxValue);
   }
   // User content remains literal text; the UI renders it through React's escaping.
-  assert.equal(validateCountdownTexts({ ...defaultTexts, title_text: "<b>Mi momento</b>" }).title_text, "<b>Mi momento</b>");
+  assert.equal(validateObjectiveTexts({ ...defaultTexts, title_text: "<b>Mi momento</b>" }).title_text, "<b>Mi momento</b>");
 });
 
 test("objective name, theme and percentage preference are validated", () => {
   const settings = { ...defaultTexts, objective_name: "  Viaje  ", accent_theme: "green", show_progress_percentage: true };
-  assert.equal(validateCountdownSettings(settings).objective_name, "Viaje");
-  for (const name of ["", "  ", "x".repeat(61)]) assert.throws(() => validateCountdownSettings({ ...settings, objective_name: name }));
-  assert.equal(validateCountdownSettings({ ...settings, objective_name: "x".repeat(60) }).objective_name.length, 60);
+  assert.equal(validateObjectiveSettings(settings).objective_name, "Viaje");
+  for (const name of ["", "  ", "x".repeat(61)]) assert.throws(() => validateObjectiveSettings({ ...settings, objective_name: name }));
+  assert.equal(validateObjectiveSettings({ ...settings, objective_name: "x".repeat(60) }).objective_name.length, 60);
   for (const theme of accentThemes) {
-    assert.equal(validateCountdownSettings({ ...settings, accent_theme: theme.value }).accent_theme, theme.value);
+    assert.equal(validateObjectiveSettings({ ...settings, accent_theme: theme.value }).accent_theme, theme.value);
   }
-  assert.throws(() => validateCountdownSettings({ ...settings, accent_theme: "red" }));
-  assert.equal(validateCountdownSettings({ ...settings, show_progress_percentage: false }).show_progress_percentage, false);
-  assert.throws(() => validateCountdownSettings({ ...settings, show_progress_percentage: "false" }));
+  assert.throws(() => validateObjectiveSettings({ ...settings, accent_theme: "red" }));
+  assert.equal(validateObjectiveSettings({ ...settings, show_progress_percentage: false }).show_progress_percentage, false);
+  assert.throws(() => validateObjectiveSettings({ ...settings, show_progress_percentage: "false" }));
 });
 
 test("percentages complement each other and milestones activate at their exact thresholds", () => {
@@ -105,91 +105,161 @@ test("time summaries use natural Spanish days, hours and minutes, including comp
   assert.equal(getTimeSummary(2 * day, 0, day).remaining, "Ya llegaste a tu fecha objetivo.");
 });
 
-test("SDK persists customization, preserves start for personalization and resets it only for a new target", async () => {
+const settings = { ...defaultTexts, objective_name: "Viaje", accent_theme: "green", show_progress_percentage: true };
+function record(id, target, overrides = {}) {
+  return { ...settings, id, user_id: "test-user", started_at: "2026-01-01T00:00:00Z", target_at: target, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z", status: "active", completed_at: null, ...overrides };
+}
+
+test("dashboard handles zero, one and many objectives, nearest future highlight, filters and independent themes", () => {
+  const now = Date.parse("2026-10-11T12:00:00Z");
+  const empty = getDashboardObjectives([], now);
+  assert.equal(empty.next, null);
+  assert.deepEqual(empty.cards, []);
+  assert.deepEqual(empty.history, []);
+  const near = record("near", "2026-10-12T12:00:00Z", { accent_theme: "violet" });
+  const far = record("far", "2026-11-12T12:00:00Z", { accent_theme: "blue" });
+  const reached = record("reached", "2026-10-11T12:00:00Z", { accent_theme: "amber" });
+  const done = record("done", "2026-10-01T00:00:00Z", { status: "completed", completed_at: "2026-10-02T00:00:00Z" });
+  const recent = record("recent", "2026-09-01T00:00:00Z", { status: "completed", completed_at: "2026-10-10T00:00:00Z" });
+  assert.equal(getDashboardObjectives([near], now).featured.id, "near");
+  assert.deepEqual(getDashboardObjectives([near], now).cards, []);
+  const input = [far, done, near, recent, reached];
+  const dashboard = getDashboardObjectives(input, now);
+  assert.deepEqual(dashboard.active.map((item) => item.id), ["reached", "near", "far"]);
+  assert.equal(dashboard.featured.id, "near");
+  assert.deepEqual(dashboard.cards.map((item) => item.id), ["reached", "far"]);
+  assert.deepEqual(dashboard.history.map((item) => item.id), ["recent", "done"]);
+  assert.deepEqual(dashboard.active.map((item) => item.accent_theme), ["amber", "violet", "blue"]);
+  assert.equal(dashboard.history[0].accent_theme, "green");
+  assert.equal(getDashboardObjectives(input, now, "reached").featured, null);
+  assert.deepEqual(getDashboardObjectives(input, now, "reached").cards.map((item) => item.id), ["reached"]);
+  assert.deepEqual(getDashboardObjectives(input, now, "active").visibleHistory, []);
+  assert.deepEqual(getDashboardObjectives(input, now, "completed").cards, []);
+  assert.deepEqual(getDashboardObjectives(input, now, "completed").visibleHistory.map((item) => item.id), ["recent", "done"]);
+  assert.equal(getDashboardObjectives([reached], now).next, null);
+  assert.equal(getCountdown(now, Date.parse(reached.started_at), Date.parse(reached.target_at)).complete, true);
+  assert.equal(reached.status, "active", "reaching the date does not complete the objective");
+  assert.deepEqual(input.map((item) => item.id), ["far", "done", "near", "recent", "reached"], "sorting does not mutate input");
+});
+
+test("SDK creates, edits, completes, reopens and deletes individual objectives with user isolation", async () => {
   const user = { id: "test-user", aud: "authenticated", email: "test@example.com", app_metadata: {}, user_metadata: {}, created_at: "2026-01-01T00:00:00Z" };
   const rows = new Map();
   let failQuery = false;
   let failWrite = false;
   let writes = 0;
-  const token = [{ alg: "HS256" }, { sub: user.id, exp: Math.floor(Date.now() / 1000) + 3600 }]
-    .map((part) => Buffer.from(JSON.stringify(part)).toString("base64url")).join(".") + ".signature";
-  const client = createClient("https://countdowns-test.supabase.co", "sb_publishable_test", {
+  let reads = 0;
+  const token = [{ alg: "HS256" }, { sub: user.id, exp: Math.floor(Date.now() / 1000) + 3600 }].map((part) => Buffer.from(JSON.stringify(part)).toString("base64url")).join(".") + ".signature";
+  const client = createClient("https://objectives-test.supabase.co", "sb_publishable_test", {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
     global: { fetch: async (input, options) => {
       const url = new URL(String(input));
       if (url.pathname.endsWith("/token")) return Response.json({ access_token: token, refresh_token: "refresh", token_type: "bearer", expires_in: 3600, user });
       if (url.pathname.endsWith("/user")) return Response.json(user);
-      assert.equal(url.pathname, "/rest/v1/countdowns");
+      assert.equal(url.pathname, "/rest/v1/objectives", "only the new table is used");
       const headers = new Headers(options.headers);
-      if (options.method === "POST") {
+      const method = options.method;
+      if (method === "POST") {
         if (failWrite) return Response.json({ message: "RLS rejected write" }, { status: 403 });
-        assert.equal(url.searchParams.get("on_conflict"), "user_id");
-        assert.ok(headers.get("prefer").includes("resolution=merge-duplicates"));
+        const body = JSON.parse(options.body);
+        assert.ok(!Object.hasOwn(body, "id"), "the database generates the UUID");
+        assert.equal(body.user_id, user.id);
         assert.equal(headers.get("content-profile"), "public");
-        const row = JSON.parse(options.body);
-        rows.set(row.user_id, row);
+        const row = { ...body, id: `generated-${rows.size + 1}` };
+        rows.set(row.id, row);
         writes++;
-        return new Response(null, { status: 201 });
+        return Response.json(row, { status: 201 });
       }
+      assert.equal(url.searchParams.get("user_id"), `eq.${user.id}`, "reads and mutations are scoped to the authenticated user");
+      const id = url.searchParams.get("id")?.slice(3);
+      const matching = [...rows.values()].filter((row) => row.user_id === user.id && (!id || row.id === id));
+      if (method === "PATCH" || method === "DELETE") {
+        if (failWrite) return Response.json({ message: "Write rejected" }, { status: 403 });
+        assert.ok(id, "never mutate all user objectives");
+        assert.equal(headers.get("content-profile"), "public");
+        if (!matching.length) return Response.json({ message: "No row" }, { status: 406 });
+        const row = method === "PATCH" ? { ...matching[0], ...JSON.parse(options.body) } : matching[0];
+        if (method === "PATCH") rows.set(id, row); else rows.delete(id);
+        writes++;
+        return Response.json(row);
+      }
+      reads++;
       assert.equal(headers.get("accept-profile"), "public");
-      assert.equal(url.searchParams.get("user_id"), `eq.${user.id}`);
-      for (const field of textFields) assert.ok(url.searchParams.get("select").split(",").includes(field.key));
-      for (const field of ["objective_name", "accent_theme", "show_progress_percentage"]) assert.ok(url.searchParams.get("select").split(",").includes(field));
-      if (failQuery) return Response.json({ message: "Database unavailable" }, { status: 503 });
-      return Response.json(rows.has(user.id) ? [rows.get(user.id)] : []);
+      if (failQuery) return Response.json({ message: "Database unavailable" }, { status: 400 });
+      for (const field of [...textFields.map((field) => field.key), "id", "status", "completed_at", "objective_name", "accent_theme", "show_progress_percentage"]) assert.ok(url.searchParams.get("select").split(",").includes(field));
+      return Response.json(matching);
     } },
   });
   try {
     await client.auth.signInWithPassword({ email: user.email, password: "test" });
-    assert.equal(await loadCountdown(client, user.id), null);
-    const firstPress = Date.now();
-    const target = new Date(firstPress + 86400000).toISOString();
-    const texts = { title_text: "Mi viaje", start_label: "Hoy", end_label: "El destino", message_text: "  Ya queda menos.  ", objective_name: "Viaje", accent_theme: "green", show_progress_percentage: true };
-    await saveCountdown(client, user.id, target, firstPress, texts);
-    assert.deepEqual(await loadCountdown(client, user.id), {
-      user_id: user.id, started_at: new Date(firstPress).toISOString(), target_at: target, updated_at: new Date(firstPress).toISOString(),
-      ...texts, message_text: "Ya queda menos.",
-    });
-    const secondPress = firstPress + 1000;
-    await saveCountdown(client, user.id, target.replace("Z", "+00:00"), secondPress, { ...texts, title_text: "Mi nuevo viaje", objective_name: "Vacaciones", accent_theme: "blue", show_progress_percentage: false });
-    assert.equal(rows.size, 1);
-    assert.equal(rows.get(user.id).started_at, new Date(firstPress).toISOString());
-    assert.equal(rows.get(user.id).updated_at, new Date(secondPress).toISOString());
-    const saved = await loadCountdown(client, user.id);
-    assert.equal(saved.title_text, "Mi nuevo viaje");
-    assert.equal(saved.objective_name, "Vacaciones");
-    assert.equal(saved.accent_theme, "blue");
-    assert.equal(saved.show_progress_percentage, false);
+    assert.deepEqual(await loadObjectives(client, user.id), []);
+    assert.equal(await loadObjective(client, user.id, "missing"), null);
+    const press = Date.now();
+    const target = new Date(press + 86400000).toISOString();
+    const first = await saveObjective(client, user.id, null, target, press, { ...settings, message_text: "  Ya queda menos.  " });
+    assert.equal(first.started_at, new Date(press).toISOString());
+    assert.equal(first.created_at, first.started_at);
+    assert.equal(first.updated_at, first.started_at);
+    assert.equal(first.status, "active");
+    assert.equal(first.completed_at, null);
+    assert.equal(first.message_text, "Ya queda menos.");
     for (const [index, theme] of accentThemes.entries()) {
-      const editPress = secondPress + index + 1;
-      await saveCountdown(client, user.id, target, editPress, { ...texts, accent_theme: theme.value });
-      const edited = await loadCountdown(client, user.id);
+      await saveObjective(client, user.id, first.id, target.replace("Z", "+00:00"), press + index + 1, { ...settings, accent_theme: theme.value, show_progress_percentage: false });
+      const edited = await loadObjective(client, user.id, first.id);
+      assert.equal(edited.started_at, first.started_at);
+      assert.equal(edited.created_at, first.created_at);
+      assert.equal(edited.updated_at, new Date(press + index + 1).toISOString());
       assert.equal(edited.accent_theme, theme.value);
-      assert.equal(edited.started_at, new Date(firstPress).toISOString(), "theme-only edits preserve the start");
-      assert.equal(edited.updated_at, new Date(editPress).toISOString());
+      assert.equal(edited.show_progress_percentage, false);
     }
-    const thirdPress = secondPress + 1000;
-    await saveCountdown(client, user.id, new Date(firstPress + 2 * 86400000).toISOString(), thirdPress, texts);
-    assert.equal(rows.get(user.id).started_at, new Date(thirdPress).toISOString());
-    assert.equal(rows.get(user.id).updated_at, new Date(thirdPress).toISOString());
-    await assert.rejects(() => saveCountdown(client, user.id, new Date(firstPress).toISOString(), firstPress, texts));
-    await assert.rejects(() => saveCountdown(client, user.id, "invalid", firstPress, texts));
-    await assert.rejects(() => saveCountdown(client, "other-user", target, firstPress, texts));
-    await assert.rejects(() => saveCountdown(client, user.id, target, firstPress, { ...texts, start_label: " " }));
-    assert.equal(writes, 7);
+    const second = await saveObjective(client, user.id, null, new Date(press + 2 * 86400000).toISOString(), press + 100, { ...settings, accent_theme: "violet" });
+    const readCount = reads;
+    assert.equal((await loadObjectives(client, user.id)).length, 2);
+    assert.equal(reads, readCount + 1, "dashboard uses one main table query");
+    const changed = await saveObjective(client, user.id, first.id, new Date(press + 3 * 86400000).toISOString(), press + 1000, settings);
+    assert.equal(changed.started_at, new Date(press + 1000).toISOString());
+    assert.equal(rows.get(second.id).started_at, second.started_at, "editing one objective leaves the other unchanged");
+    const completed = await changeObjectiveStatus(client, user.id, first.id, "completed", press + 2000);
+    assert.equal(completed.completed_at, new Date(press + 2000).toISOString());
+    assert.equal(completed.updated_at, completed.completed_at);
+    assert.equal(completed.started_at, changed.started_at);
+    const view = getDashboardObjectives(await loadObjectives(client, user.id), press + 2000);
+    assert.equal(view.active.length, 1);
+    assert.equal(view.history[0].id, first.id);
+    const reopened = await changeObjectiveStatus(client, user.id, first.id, "active", press + 3000);
+    assert.equal(reopened.completed_at, null);
+    assert.equal(reopened.started_at, changed.started_at);
+    assert.equal(reopened.updated_at, new Date(press + 3000).toISOString());
+    rows.set("other", { ...second, id: "other", user_id: "other-user" });
+    assert.equal(await loadObjective(client, user.id, "other"), null);
+    assert.equal((await loadObjectives(client, user.id)).length, 2);
+    await assert.rejects(() => saveObjective(client, user.id, "other", target, press, settings));
+    await assert.rejects(() => changeObjectiveStatus(client, user.id, "other", "completed", press));
+    await assert.rejects(() => deleteObjective(client, user.id, "other"));
+    await assert.rejects(() => loadObjectives(client, "other-user"));
+    const previousWrites = writes;
+    await assert.rejects(() => saveObjective(client, user.id, null, new Date(press - 1).toISOString(), press, settings));
+    await assert.rejects(() => saveObjective(client, user.id, null, "invalid", press, settings));
+    await assert.rejects(() => saveObjective(client, user.id, first.id, target, press, { ...settings, start_label: " " }));
+    assert.equal(writes, previousWrites);
+    const expired = { ...rows.get(first.id), started_at: new Date(press - 120000).toISOString(), target_at: new Date(press - 60000).toISOString() };
+    rows.set(first.id, expired);
+    const personalized = await saveObjective(client, user.id, first.id, expired.target_at, press + 4000, { ...settings, accent_theme: "blue" });
+    assert.equal(personalized.started_at, expired.started_at);
+    assert.equal(personalized.status, "active");
     failQuery = true;
-    await assert.rejects(() => loadCountdown(client, user.id));
+    await assert.rejects(() => loadObjectives(client, user.id));
     failQuery = false;
     failWrite = true;
-    await assert.rejects(() => saveCountdown(client, user.id, target, firstPress, texts));
+    await assert.rejects(() => saveObjective(client, user.id, first.id, expired.target_at, press, settings));
+    await assert.rejects(() => changeObjectiveStatus(client, user.id, first.id, "completed", press));
+    await assert.rejects(() => deleteObjective(client, user.id, first.id));
     failWrite = false;
-    const completed = { ...rows.get(user.id), started_at: new Date(firstPress - 120000).toISOString(), target_at: new Date(firstPress - 60000).toISOString() };
-    rows.set(user.id, completed);
-    await saveCountdown(client, user.id, completed.target_at, Date.now(), { ...texts, accent_theme: "violet", show_progress_percentage: false });
-    assert.equal(rows.get(user.id).started_at, completed.started_at, "an expired target can still be personalized without restarting");
-    rows.set(user.id, { ...rows.get(user.id), target_at: "invalid" });
-    await assert.rejects(() => loadCountdown(client, user.id));
-  } finally {
-    await client.auth.dispose();
-  }
+    await deleteObjective(client, user.id, first.id);
+    assert.equal(await loadObjective(client, user.id, first.id), null);
+    assert.equal(rows.get("other").user_id, "other-user");
+    assert.equal(rows.get(second.id).id, second.id);
+    rows.set(second.id, { ...second, target_at: "invalid" });
+    await assert.rejects(() => loadObjectives(client, user.id));
+  } finally { await client.auth.dispose(); }
 });

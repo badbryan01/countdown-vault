@@ -12,7 +12,7 @@ export function SessionGate({ children, requireSession }: { children: ReactNode;
   const redirect = !loading && !error && Boolean(session) !== requireSession;
 
   useEffect(() => {
-    if (redirect) router.replace(requireSession ? "/" : "/countdown");
+    if (redirect) router.replace(requireSession ? "/" : "/dashboard");
   }, [redirect, requireSession, router]);
 
   if (error) {

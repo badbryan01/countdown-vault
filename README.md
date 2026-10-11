@@ -1,100 +1,71 @@
-# Countdown Vault
+# Countdown Vault 2.0
 
-Interfaz personal de cuenta regresiva con Next.js, React, TypeScript y Tailwind CSS.
+Aplicación personal de múltiples objetivos con Next.js, React, TypeScript, Tailwind CSS y Supabase. Exportación estática compatible con GitHub Pages.
 
 ## Desarrollo
 
 ```sh
-npm install
+npm ci
 npm run dev
 ```
 
-- `/`: login con correo y contraseña mediante Supabase Auth. Una sesión existente redirige al contador.
-- `/countdown`: requiere sesión; contador actualizado cada segundo, progreso verde → amarillo → naranjo → rojo y cierre de sesión.
-- `/settings`: requiere sesión; carga la fecha existente y permite guardar una fecha futura en Supabase.
+Configura manualmente `.env.local`, que está ignorado por Git:
 
-La única fuente de fechas es `public.countdowns`. Cada usuario tiene una fila identificada por `user_id`, con `started_at`, `target_at` y `updated_at` como `timestamptz`. Las políticas RLS existentes deben permitir al usuario leer, insertar y actualizar su propia fila.
-
-Cada guardado verifica el usuario con `auth.getUser()` y hace un upsert con `onConflict: 'user_id'`. Antes de escribir, consulta la fila actual y compara los timestamps de `target_at`: `started_at` se reinicia al instante de Guardar únicamente si cambia la fecha objetivo (o no existe fila). Si solo cambia la personalización, mantiene el inicio existente; `updated_at` siempre se actualiza. Los segundos y milisegundos del objetivo se conservan si los campos de fecha/hora no cambian. No se persisten fechas en el navegador.
-
-El mismo formulario carga y guarda `title_text`, `start_label`, `end_label` y `message_text` junto con la fecha. Los textos son obligatorios, se recortan los espacios iniciales/finales y se admiten hasta 60, 40, 40 y 160 caracteres, respectivamente. Los usuarios sin registro comienzan con los valores predeterminados de la tabla como propuesta del formulario. El contador muestra los textos recuperados de Supabase; al llegar al objetivo mantiene «Llegó el momento.».
-
-La versión 1.1 guarda además `objective_name` (obligatorio, trim, máximo 60 caracteres), `show_progress_percentage` y `accent_theme` (`green`, `blue`, `violet`, `amber`). El nombre aparece antes de la fecha; el control de porcentaje permite mostrar u ocultar los valores transcurrido/restante con un decimal. Los temas aplican variables CSS a botones, etiquetas, foco y hitos, con previsualización inmediata en Settings y persistencia al guardar. La barra mantiene su color temporal verde → amarillo → naranjo → rojo.
-
-Los hitos 25/50/75/90% y el resumen de tiempo transcurrido/restante se calculan en el navegador a partir del mismo timer del countdown; no requieren columnas adicionales. Los porcentajes visibles suman 100,0% después del redondeo. Una fecha nueva debe ser futura; una fecha ya cumplida puede conservarse al editar solo personalización.
-
-El progreso se calcula cada segundo como `(ahora - started_at) / (target_at - started_at)`, limitado a 0–100%. Al llegar al objetivo, el contador queda en cero y la barra roja y completa. Si no existe una fila, se ofrece Definir fecha; los errores de lectura permiten reintentar.
-
-La conversión utiliza `America/Santiago`, independientemente de la zona del navegador, y considera el horario de verano. Las horas inexistentes durante el cambio de horario se rechazan; si una hora se repite en otoño, se utiliza su primera ocurrencia. Las fechas recuperadas se muestran en Santiago.
-
-Esta versión incorpora login, sesión persistente y logout con Supabase Auth. No incluye registro ni recuperación de contraseña. Usa fuentes del sistema.
-
-## Configuración de Supabase
-
-Introduce la URL del proyecto y su clave publicable en `.env.local`, en la raíz:
-
-```dotenv
+```ini
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 ```
 
-`.env.local` está excluido de Git. Usa únicamente la clave publicable; nunca claves privadas. El cliente reutilizable está en `app/lib/supabase.ts`, mediante `getSupabaseClient()`. Se inicializa en el navegador y deja que Supabase gestione la persistencia y renovación de tokens. La aplicación no guarda tokens manualmente.
+El cliente de `app/lib/supabase.ts` utiliza exclusivamente una clave publicable. Supabase administra la persistencia y renovación de sesión. No hay registro de usuarios ni almacenamiento manual de tokens o fechas.
 
-`AuthProvider` comprueba la sesión inicial y escucha los cambios de autenticación. `SessionGate` oculta el formulario o el contenido protegido mientras comprueba la sesión y redirige con `router.replace`. La protección funciona en el cliente y conserva la exportación estática. Las consultas utilizan la clave publicable, el usuario autenticado y las políticas RLS de Supabase.
+## Pantallas y datos
 
-`LoadingLogo` (`app/components/loading-logo.tsx`) reutiliza `public/cv-logo.png` en las comprobaciones de sesión, consultas iniciales y operaciones. Login, guardado y logout muestran un overlay oscuro sobre la pantalla actual. `LoadingLink` utiliza el estado pendiente real de Next.js para mostrarlo durante navegaciones que lo necesiten, sin retrasos artificiales. La rotación es horaria, lineal, de 1,4 segundos por vuelta y se desactiva con `prefers-reduced-motion`. Los estados se anuncian mediante etiquetas accesibles sin texto visible.
+- `/`: login; una sesión activa redirige a `/dashboard`.
+- `/dashboard`: resumen, próximo objetivo futuro destacado, tarjetas activas ordenadas, filtros locales e historial por fecha de logro descendente.
+- `/countdown?id=UUID`: detalle de un objetivo propio.
+- `/settings`: crea un objetivo; `/settings?id=UUID` edita uno existente y permite eliminarlo con confirmación.
 
-Después de cambiar las variables, reinicia el servidor de desarrollo. Para la exportación estática, define también ambas variables en el entorno que ejecuta el build de GitHub Pages: Next.js incorpora sus valores públicos durante la compilación, por lo que cualquier cambio requiere volver a construir y publicar.
+Todas las pantallas internas requieren sesión mediante `SessionGate`. Los parámetros se leen del lado del cliente dentro de Suspense; no hay rutas dinámicas que necesiten UUID durante el build.
 
-## Probar autenticación
+`public.objectives` es la única fuente de verdad. `app/lib/objectives.ts` centraliza las consultas y escrituras, verifica el usuario con `auth.getUser()` y filtra por `user_id` e `id` cuando corresponde. El Dashboard obtiene todas las filas con una consulta principal. RLS sigue siendo la protección real: cada usuario debe poder operar solamente sobre sus propios objetivos. La tabla anterior no se consulta ni modifica.
 
-Utiliza un usuario existente en Supabase Auth; esta app no crea usuarios.
+Crear utiliza `insert`, dejando el UUID a Supabase y estableciendo inicio, creación y modificación al momento de Guardar. Editar utiliza `update`: conserva `started_at` si no cambia el instante objetivo y lo reinicia únicamente al cambiar realmente `target_at`. Los segundos y milisegundos originales se conservan si los campos fecha/hora no cambian. El estado y la fecha de creación se mantienen al editar.
 
-1. Sin sesión, abre `/countdown` y `/settings` directamente: deben mostrar la comprobación y volver a `/`.
-2. Introduce una contraseña incorrecta: debe aparecer un error en español y habilitarse nuevamente el botón.
-3. Inicia sesión con credenciales válidas: debe abrirse `/countdown`.
-4. Recarga, cierra y vuelve a abrir el navegador en el mismo perfil. La sesión debe recuperarse o renovarse; abrir `/` debe llevar al contador sin mostrar el formulario.
-5. Pulsa Cerrar sesión y vuelve a abrir ambas rutas protegidas, incluso con el botón Atrás: deben volver al login. También comprueba otra pestaña abierta del mismo sitio.
+Alcanzar la fecha deja el contador en cero y el progreso rojo al 100 %, pero conserva el estado activo. Marcar como logrado requiere confirmación y establece `status=completed` y `completed_at`; reabrir limpia la fecha de logro y conserva el inicio. Eliminar exige una segunda acción explícita y es permanente.
 
-## Probar fechas
+Las fechas se convierten a ISO en `America/Santiago`, incluyendo horario de verano/invierno. Cada pantalla comparte un único reloj entre sus tarjetas. El acento pertenece a cada objetivo y no altera los colores temporales de la barra. El logo CV se reutiliza en los estados de carga y respeta reducción de movimiento.
 
-1. Con un usuario sin fila, verifica el estado vacío y el botón Definir fecha.
-2. Prueba campos vacíos, una fecha pasada y una hora igual al momento actual: no deben guardarse.
-3. Guarda una fecha futura y comprueba en Supabase la fila y los timestamps ISO. Recarga el contador y abre Configurar fecha: los valores deben recuperarse en horario de Santiago.
-4. Cambia la fecha objetivo: debe mantenerse una sola fila para el usuario y reiniciarse `started_at` y la barra. Si solo cambias nombre, textos, tema o porcentaje, `started_at` debe mantenerse; `updated_at` debe actualizarse en ambos casos.
-5. Elige el próximo minuto y espera hasta el objetivo: contador cero, barra roja al 100% y Llegó el momento.
-6. Corta la conexión y comprueba los errores y Reintentar. Prueba otro usuario para verificar el aislamiento de las filas mediante RLS.
-7. Personaliza los cuatro textos, guarda y recarga ambas pantallas: deben conservarse. Prueba textos vacíos o con solo espacios, espacios en los extremos y valores cerca del máximo en móvil y escritorio.
-8. Guarda un nombre, alterna el porcentaje y prueba los cuatro temas. Verifica su persistencia, los hitos alcanzados y que el acento no cambie el color temporal de la barra. Comprueba la disposición en móvil y escritorio.
-
-Las pruebas automatizadas usan respuestas de Auth y de la tabla simuladas, sin contactar Supabase ni utilizar credenciales reales. Incluyen persistencia, upsert, errores, validación de fechas, cambios de horario de Santiago, límites del progreso y HTML inicial sin contenido protegido:
-
-```sh
-node --test tests/*.test.mjs
-```
-
-## Verificación y exportación
+## Pruebas
 
 ```sh
 npm run lint
 npm run build
+node --test tests/*.test.mjs
 ```
 
-El build exporta las páginas estáticas a `out/`, con rutas que terminan en `/`. No se requiere un servidor de Next.js en producción.
+Las pruebas simulan Auth y PostgREST mediante el SDK oficial; no usan credenciales reales ni contactan Supabase. Verifican sesión, aislamiento por usuario, creación/edición/cambio de fecha, estados, eliminación, Dashboard, filtros, temas, Santiago, progreso y HTML inicial sin contenido protegido.
 
-Para publicar más adelante en GitHub Pages bajo una ruta de repositorio, configura `NEXT_PUBLIC_BASE_PATH` antes del build. Por ejemplo, en PowerShell:
+Pruebas manuales recomendadas:
+
+1. Inicia sesión con un usuario existente; verifica la recuperación de sesión y el acceso protegido a todas las rutas.
+2. Comprueba el objetivo migrado y el estado vacío con otro usuario sin objetivos.
+3. Crea varios objetivos con fechas y colores diferentes. Verifica el destacado, orden, filtros y diseño en móvil/escritorio.
+4. Cambia solo personalización y luego la fecha; comprueba que el inicio se reinicie solamente en el segundo caso.
+5. Espera una fecha cercana: debe mostrar Fecha alcanzada sin pasar automáticamente al historial. Confirma logro, reabre y comprueba que conserve el inicio.
+6. Cancela y confirma una eliminación; verifica su permanencia. Prueba un UUID ajeno: no debe mostrarse ni editarse.
+7. Prueba errores de conexión y Reintentar, campos inválidos, cierre de sesión y el reloj al pasar a medianoche.
+
+## GitHub Pages
+
+`next.config.ts` conserva `output: "export"` y `trailingSlash: true`. El build genera `out/`.
+
+Para construir con el prefijo del repositorio en PowerShell:
 
 ```powershell
 $env:NEXT_PUBLIC_BASE_PATH = '/countdown-vault'
 npm run build
 ```
 
-Para un dominio propio o un sitio en la raíz, omite esa variable.
+El workflow existente `.github/workflows/deploy-pages.yml` ejecuta Node.js 24, `npm ci`, lint, build y tests para cada push a `main`, y despliega `out/` mediante las acciones oficiales de Pages. Lee exclusivamente las Repository Variables `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`; establece el prefijo `/countdown-vault`.
 
-## GitHub Pages
-
-`.github/workflows/deploy-pages.yml` publica automáticamente cada push a `main` y permite ejecución manual desde Actions. Usa Node.js 24, `npm ci`, lint, build estático, pruebas y las acciones oficiales de GitHub Pages para subir `out/` y desplegar en el environment `github-pages`.
-
-GitHub Pages debe tener GitHub Actions como fuente. En Settings → Secrets and variables → Actions → Variables, configura `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. El workflow lee exclusivamente estas Repository Variables y establece `NEXT_PUBLIC_BASE_PATH=/countdown-vault` durante el build, reutilizando la configuración existente de Next.js.
-
-La URL del sitio es `https://badbryan01.github.io/countdown-vault/`. Revisa en Actions que los jobs `build` y `deploy` terminen correctamente. `.env.local` permanece ignorado y no se usa en el runner.
+Sitio: https://badbryan01.github.io/countdown-vault/. Revisa los jobs build y deploy en Actions. `.env.local` nunca se envía al runner.

@@ -58,3 +58,8 @@ export function getTimeSummary(now: number, start: number, target: number) {
       : `${remaining.count === 1 ? "Queda" : "Quedan"} ${remaining.count} ${remaining.count === 1 ? remaining.unit : remaining.plural} para tu objetivo.`,
   };
 }
+
+export function formatDuration(milliseconds: number) {
+  const duration = describeDuration(Math.max(0, milliseconds));
+  return duration.count === 0 ? "menos de un minuto" : `${duration.count} ${duration.count === 1 ? duration.unit : duration.plural}`;
+}

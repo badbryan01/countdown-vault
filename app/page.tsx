@@ -41,7 +41,7 @@ function LoginForm() {
         setError("No se pudo iniciar sesión. Inténtalo nuevamente.");
         return;
       }
-      startTransition(() => router.replace("/countdown"));
+      startTransition(() => router.replace("/dashboard"));
     } catch {
       setError("No se pudo iniciar sesión. Revisa tu conexión e inténtalo nuevamente.");
     } finally {
